@@ -1,7 +1,8 @@
+// server.js
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
-const colors = require('colors'); // optional - makes console logs nicer (npm install colors)
+const colors = require('colors');
 
 const connectDB = require('./config/db');
 const authRoutes = require('./routes/auth');
@@ -18,14 +19,13 @@ app.use('/api/auth', authRoutes);
 app.use('/api/quotations', quotationRoutes);
 
 // ────────────────────────────────────────────────
-// PUBLIC ROUTE - Anyone can view the quotation via link
+// PUBLIC ROUTE - Returns FULL quotation data
 // ────────────────────────────────────────────────
 app.get('/proposal/:proposalId', async (req, res) => {
   try {
     const Quotation = require('./models/Quotation');
 
-    const quotation = await Quotation.findOne({ proposalId: req.params.proposalId })
-      .select('-createdBy -__v -updatedAt'); // hide sensitive/internal fields
+    const quotation = await Quotation.findOne({ proposalId: req.params.proposalId });
 
     if (!quotation) {
       return res.status(404).json({ 
@@ -34,15 +34,21 @@ app.get('/proposal/:proposalId', async (req, res) => {
       });
     }
 
-    // Optional: track that it was viewed (can be used for analytics later)
+    // Optional: track view
     if (quotation.status === 'sent') {
       quotation.status = 'viewed';
       await quotation.save({ validateBeforeSave: false });
     }
 
+    // Return everything except sensitive fields
+    const safeData = quotation.toObject();
+    delete safeData.createdBy;
+    delete safeData.__v;
+    delete safeData.updatedAt;
+
     res.status(200).json({
       success: true,
-      data: quotation
+      data: safeData
     });
   } catch (error) {
     console.error(`Error fetching proposal ${req.params.proposalId}:`.red, error.message);
@@ -53,7 +59,7 @@ app.get('/proposal/:proposalId', async (req, res) => {
   }
 });
 
-// Simple root route for testing
+// Root test route
 app.get('/', (req, res) => {
   res.json({ 
     message: 'Air Utilities Quotation System API',
@@ -62,7 +68,7 @@ app.get('/', (req, res) => {
   });
 });
 
-// Global error handler (basic)
+// Global error handler
 app.use((err, req, res, next) => {
   console.error(err.stack.red);
   const statusCode = res.statusCode === 200 ? 500 : res.statusCode;
@@ -73,7 +79,7 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Connect to database and start server
+// Start server
 const PORT = process.env.PORT || 5000;
 
 connectDB()

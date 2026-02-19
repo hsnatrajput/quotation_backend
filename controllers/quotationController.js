@@ -1,75 +1,47 @@
+// controllers/quotationController.js
 const asyncHandler = require('express-async-handler');
 const Quotation = require('../models/Quotation');
 
 // ────────────────────────────────────────────────
-// CREATE new quotation
+// CREATE new quotation (accepts ALL fields from frontend)
 // ────────────────────────────────────────────────
 const createQuotation = asyncHandler(async (req, res) => {
   // Dynamic import of nanoid (ESM-only package)
   const { customAlphabet } = await import('nanoid');
   const generateProposalId = customAlphabet('abcdefghijklmnopqrstuvwxyz0123456789', 10);
 
-  const {
-    customerName,
-    customerEmail,
-    customerPhone,
-    siteAddress,                  // ← NEW required field (replaced projectAddress)
-    jobType,                      // ← NEW array field
-    projectTitle = '',
-    projectDescription = '',
-    items,
-    subtotal,
-    vatRate = 20,
-    vatAmount,
-    totalAmount,
-    exclusions = [],
-    paymentTerms = '',
-    hourlyRates = [],
-    validUntil,
-  } = req.body;
+  // Get ALL data from request body - no destructuring limits
+  const quotationData = req.body;
 
-  // Updated required fields validation
-  if (
-    !customerName ||
-    !customerEmail ||
-    !siteAddress ||
-    !Array.isArray(jobType) || jobType.length === 0 ||
-    !Array.isArray(items) || items.length === 0 ||
-    totalAmount == null                    // allow 0, but must be defined
-  ) {
+  // Basic required field validation
+  if (!quotationData.customerName || !quotationData.customerEmail || !quotationData.siteAddress) {
     res.status(400);
-    throw new Error(
-      'Missing required fields: customerName, customerEmail, siteAddress, jobType[], items[], totalAmount'
-    );
+    throw new Error('Missing required fields: customerName, customerEmail, siteAddress');
+  }
+
+  if (!Array.isArray(quotationData.jobType) || quotationData.jobType.length === 0) {
+    res.status(400);
+    throw new Error('jobType must be a non-empty array (Electric, Gas, and/or Water)');
+  }
+
+  if (!Array.isArray(quotationData.items) || quotationData.items.length === 0) {
+    res.status(400);
+    throw new Error('items must be a non-empty array');
   }
 
   const proposalId = generateProposalId();
 
+  // Create quotation with ALL sent fields + required defaults
   const quotation = await Quotation.create({
     proposalId,
-    customerName,
-    customerEmail,
-    customerPhone: customerPhone || '',
-    siteAddress,                   // ← used here
-    jobType,                       // ← used here
-    projectTitle,
-    projectDescription,
-    items: items.map(item => ({
-      ...item,
-      quantity: Number(item.quantity) || 1,
-      unitPrice: Number(item.unitPrice),
-      totalPrice: Number(item.totalPrice),
-    })),
-    subtotal: Number(subtotal),
-    vatRate: Number(vatRate),
-    vatAmount: Number(vatAmount),
-    totalAmount: Number(totalAmount),
-    exclusions,
-    paymentTerms,
-    hourlyRates,
-    validUntil: validUntil ? new Date(validUntil) : undefined,
+    ...quotationData,                    // Spread everything from frontend
     createdBy: req.user.id,
     status: 'draft',
+    // Ensure numbers are correctly typed (Mongoose will coerce, but safer here)
+    subtotal: Number(quotationData.subtotal) || 0,
+    vatRate: Number(quotationData.vatRate) || 20,
+    vatAmount: Number(quotationData.vatAmount) || 0,
+    totalAmount: Number(quotationData.totalAmount) || 0,
   });
 
   const publicLink = `${process.env.FRONTEND_PUBLIC_URL || 'http://localhost:3000'}/proposal/${proposalId}`;
@@ -108,7 +80,6 @@ const getQuotationById = asyncHandler(async (req, res) => {
     throw new Error('Quotation not found');
   }
 
-  // Only creator can access
   if (quotation.createdBy.toString() !== req.user.id) {
     res.status(403);
     throw new Error('Not authorized to access this quotation');
@@ -205,7 +176,7 @@ const sendQuotation = asyncHandler(async (req, res) => {
 
   res.json({
     success: true,
-    message: 'Quotation marked as sent. Copy the link below and send it manually via your email (one.com webmail / Outlook / etc.)',
+    message: 'Quotation marked as sent. Copy the link below and send it manually via your email.',
     publicLink,
     proposalId: quotation.proposalId,
   });

@@ -1,3 +1,4 @@
+// models/Quotation.js
 const mongoose = require('mongoose');
 
 const quotationSchema = new mongoose.Schema({
@@ -10,16 +11,16 @@ const quotationSchema = new mongoose.Schema({
   customerName:      { type: String, required: true },
   customerEmail:     { type: String, required: true },
   customerPhone:     String,
+  customerAddress:   String,
+  developmentAddress: String,
 
-  // Job Type – now array, only 3 options allowed
   jobType: {
     type: [String],
     enum: ['Electric', 'Gas', 'Water'],
     required: true,
-    minlength: 1,  // at least one must be selected
+    minlength: 1,
   },
 
-  // Single address field: siteAddress (replaces projectAddress)
   siteAddress: {
     type: String,
     required: true,
@@ -27,7 +28,9 @@ const quotationSchema = new mongoose.Schema({
   },
 
   projectTitle:      String,
-  projectDescription:String,
+  projectDescription: String,
+  quotationType:     String,
+  scope:             String,
 
   quotationDate: {
     type: Date,
@@ -39,7 +42,7 @@ const quotationSchema = new mongoose.Schema({
     description:   String,
     quantity:      { type: Number, default: 1 },
     unitPrice:     { type: Number, required: true },
-    totalPrice:    { type: Number, required: true }
+    totalPrice:    { type: Number, required: true },
   }],
 
   subtotal:    { type: Number, required: true },
@@ -65,8 +68,80 @@ const quotationSchema = new mongoose.Schema({
     required: true
   },
 
+  // ────────────────────────────────────────────────
+  // All your extra fields — MUST be here to be saved
+  // ────────────────────────────────────────────────
+  scopeTable: {
+    drawing: String,
+    totalPlots: String,
+    futurePhaseAllowance: String,
+    totalLoadAllowance: String,
+    heatingType: String,
+    plotConnections: String,
+    meters: String,
+    electricConnectionVoltage: String,
+    waterMainType: String,
+    waterWasteSustainability: String,
+    mainsConnectionsCommissioning: String,
+  },
+
+  tenderInclusions: {
+    type: Map,
+    of: mongoose.Schema.Types.Mixed
+  },
+
+  airSourceHeatPumps: {
+    numPlots: String,
+    plotNumbers: String,
+    dataSheetProvided: Boolean,
+    pumpModel: String,
+    ashpLoadAllowancePerPlot: String,
+  },
+
+  nonContestableCharges: {
+    electricPOC: String,
+    waterPOCIncumbent: String,
+    waterInfraFees: String,
+    wasteWaterInfraFees: String,
+    environmentalComponent: String,
+    meterAdminCharges: String,
+    uuApprovalFee: String,
+    councilCharges: String,
+  },
+
+  deliveryStandards: {
+    serviceCallOff: String,
+    mainsCallOff: String,
+    mobilisationDesignApproval: String,
+    draftDuctLayouts: String,
+  },
+
+  pocDocumentation: {
+    waterPocRef: String,
+    waterPocExpiry: String,
+    mainsElectricPocRef: String,
+    mainsElectricPocExpiry: String,
+  },
+
+  constructionAssumptions: {
+    siteSpecific: String,
+    generalTerms: String,
+  },
+
+  responsibilities: {
+    customer: String,
+    au: String,
+  },
+
+  legalDocumentation: {
+    customerContact: String,
+    landownerDetails: String,
+    solicitorsActing: String,
+  },
+
 }, {
-  timestamps: true
+  timestamps: true,
+  strict: false // ← allows extra fields if you add more later (optional safety)
 });
 
 module.exports = mongoose.model('Quotation', quotationSchema);
