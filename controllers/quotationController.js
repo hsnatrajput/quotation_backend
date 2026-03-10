@@ -6,14 +6,12 @@ const Quotation = require('../models/Quotation');
 // CREATE new quotation (accepts ALL fields from frontend)
 // ────────────────────────────────────────────────
 const createQuotation = asyncHandler(async (req, res) => {
-  // Dynamic import of nanoid (ESM-only package)
   const { customAlphabet } = await import('nanoid');
   const generateProposalId = customAlphabet('abcdefghijklmnopqrstuvwxyz0123456789', 10);
 
-  // Get ALL data from request body - no destructuring limits
   const quotationData = req.body;
 
-  // Basic required field validation
+  // Validation (keep your existing checks)
   if (!quotationData.customerName || !quotationData.customerEmail || !quotationData.siteAddress) {
     res.status(400);
     throw new Error('Missing required fields: customerName, customerEmail, siteAddress');
@@ -21,7 +19,7 @@ const createQuotation = asyncHandler(async (req, res) => {
 
   if (!Array.isArray(quotationData.jobType) || quotationData.jobType.length === 0) {
     res.status(400);
-    throw new Error('jobType must be a non-empty array (Electric, Gas, and/or Water)');
+    throw new Error('jobType must be a non-empty array');
   }
 
   if (!Array.isArray(quotationData.items) || quotationData.items.length === 0) {
@@ -31,17 +29,28 @@ const createQuotation = asyncHandler(async (req, res) => {
 
   const proposalId = generateProposalId();
 
-  // Create quotation with ALL sent fields + required defaults
-  const quotation = await Quotation.create({
-    proposalId,
-    ...quotationData,                    // Spread everything from frontend
-    createdBy: req.user.id,
-    status: 'draft',
-    // Ensure numbers are correctly typed (Mongoose will coerce, but safer here)
+  // Explicitly preserve nested/complex fields
+  const safeData = {
+    ...quotationData,
+    // Force numbers where needed
     subtotal: Number(quotationData.subtotal) || 0,
     vatRate: Number(quotationData.vatRate) || 20,
     vatAmount: Number(quotationData.vatAmount) || 0,
     totalAmount: Number(quotationData.totalAmount) || 0,
+    // Preserve nested objects exactly as sent (prevents Mongoose coercion issues)
+    tenderInclusions: quotationData.tenderInclusions || {},
+    scopeTable: quotationData.scopeTable || {},
+    airSourceHeatPumps: quotationData.airSourceHeatPumps || {},
+    nonContestableCharges: quotationData.nonContestableCharges || {},
+    pocDocumentation: quotationData.pocDocumentation || {},
+    // Add any other nested fields if needed
+  };
+
+  const quotation = await Quotation.create({
+    proposalId,
+    ...safeData,
+    createdBy: req.user.id,
+    status: 'draft',
   });
 
   const publicLink = `${process.env.FRONTEND_PUBLIC_URL || 'http://localhost:3000'}/proposal/${proposalId}`;
@@ -51,6 +60,46 @@ const createQuotation = asyncHandler(async (req, res) => {
     data: quotation,
     publicLink,
     message: 'Quotation created. Copy the link and send it manually via email.',
+  });
+});
+
+// UPDATE (similar fix)
+const updateQuotation = asyncHandler(async (req, res) => {
+  const quotation = await Quotation.findById(req.params.id);
+
+  if (!quotation) {
+    res.status(404);
+    throw new Error('Quotation not found');
+  }
+
+  if (quotation.createdBy.toString() !== req.user.id) {
+    res.status(403);
+    throw new Error('Not authorized to update this quotation');
+  }
+
+  const { proposalId, createdBy, status, ...updateData } = req.body;
+
+  // Explicitly preserve nested fields
+  const safeUpdate = {
+    ...updateData,
+    tenderInclusions: updateData.tenderInclusions || quotation.tenderInclusions || {},
+    scopeTable: updateData.scopeTable || quotation.scopeTable || {},
+    airSourceHeatPumps: updateData.airSourceHeatPumps || quotation.airSourceHeatPumps || {},
+    nonContestableCharges: updateData.nonContestableCharges || quotation.nonContestableCharges || {},
+    pocDocumentation: updateData.pocDocumentation || quotation.pocDocumentation || {},
+    // etc.
+  };
+
+  const updated = await Quotation.findByIdAndUpdate(
+    req.params.id,
+    { ...safeUpdate, updatedAt: Date.now() },
+    { new: true, runValidators: true }
+  );
+
+  res.json({
+    success: true,
+    data: updated,
+    publicLink: `${process.env.FRONTEND_PUBLIC_URL || 'http://localhost:3000'}/proposal/${updated.proposalId}`,
   });
 });
 
@@ -94,34 +143,34 @@ const getQuotationById = asyncHandler(async (req, res) => {
 // ────────────────────────────────────────────────
 // UPDATE quotation
 // ────────────────────────────────────────────────
-const updateQuotation = asyncHandler(async (req, res) => {
-  const quotation = await Quotation.findById(req.params.id);
+// const updateQuotation = asyncHandler(async (req, res) => {
+//   const quotation = await Quotation.findById(req.params.id);
 
-  if (!quotation) {
-    res.status(404);
-    throw new Error('Quotation not found');
-  }
+//   if (!quotation) {
+//     res.status(404);
+//     throw new Error('Quotation not found');
+//   }
 
-  if (quotation.createdBy.toString() !== req.user.id) {
-    res.status(403);
-    throw new Error('Not authorized to update this quotation');
-  }
+//   if (quotation.createdBy.toString() !== req.user.id) {
+//     res.status(403);
+//     throw new Error('Not authorized to update this quotation');
+//   }
 
-  // Prevent changing critical fields
-  const { proposalId, createdBy, status, ...updateData } = req.body;
+//   // Prevent changing critical fields
+//   const { proposalId, createdBy, status, ...updateData } = req.body;
 
-  const updated = await Quotation.findByIdAndUpdate(
-    req.params.id,
-    { ...updateData, updatedAt: Date.now() },
-    { new: true, runValidators: true }
-  );
+//   const updated = await Quotation.findByIdAndUpdate(
+//     req.params.id,
+//     { ...updateData, updatedAt: Date.now() },
+//     { new: true, runValidators: true }
+//   );
 
-  res.json({
-    success: true,
-    data: updated,
-    publicLink: `${process.env.FRONTEND_PUBLIC_URL || 'http://localhost:3000'}/proposal/${updated.proposalId}`,
-  });
-});
+//   res.json({
+//     success: true,
+//     data: updated,
+//     publicLink: `${process.env.FRONTEND_PUBLIC_URL || 'http://localhost:3000'}/proposal/${updated.proposalId}`,
+//   });
+// });
 
 // ────────────────────────────────────────────────
 // DELETE quotation

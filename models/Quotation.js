@@ -86,8 +86,8 @@ const quotationSchema = new mongoose.Schema({
   },
 
   tenderInclusions: {
-    type: Map,
-    of: mongoose.Schema.Types.Mixed
+    type: mongoose.Schema.Types.Mixed,  // ← allow any nested structure
+    default: {}
   },
 
   airSourceHeatPumps: {
