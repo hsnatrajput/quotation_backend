@@ -3,6 +3,7 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const colors = require('colors');
+const nodemailer = require('nodemailer');
 
 const connectDB = require('./config/db');
 const authRoutes = require('./routes/auth');
@@ -14,13 +15,42 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// ────────────────────────────────────────────────
+// Create Nodemailer transporter for one.com SMTP
+// ────────────────────────────────────────────────
+const transporter = nodemailer.createTransport({
+  host: process.env.SMTP_HOST || 'send.one.com',
+  port: parseInt(process.env.SMTP_PORT) || 587,
+  secure: false,                    // false for STARTTLS (port 587)
+  auth: {
+    user: process.env.SMTP_USER,
+    pass: process.env.SMTP_PASS,
+  },
+  tls: {
+    rejectUnauthorized: false       // Helps with one.com certificate issues
+  }
+});
+
+// Verify SMTP connection on startup
+transporter.verify((error, success) => {
+  if (error) {
+    console.error('❌ one.com SMTP connection failed:'.red, error.message);
+  } else {
+    console.log('✅ one.com SMTP is ready for sending emails'.green.bold);
+  }
+});
+
+// Make transporter available globally in the app
+app.set('emailTransporter', transporter);
+
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/quotations', quotationRoutes);
 app.use('/api/acceptances', require('./routes/acceptance'));
-// ────────────────────────────────────────────────
+// Add this after your existing routes
+app.use('/print', require('./routes/proposalPrint'));
+
 // PUBLIC ROUTE - Returns FULL quotation data
-// ────────────────────────────────────────────────
 app.get('/proposal/:proposalId', async (req, res) => {
   try {
     const Quotation = require('./models/Quotation');
@@ -34,13 +64,11 @@ app.get('/proposal/:proposalId', async (req, res) => {
       });
     }
 
-    // Optional: track view
     if (quotation.status === 'sent') {
       quotation.status = 'viewed';
       await quotation.save({ validateBeforeSave: false });
     }
 
-    // Return everything except sensitive fields
     const safeData = quotation.toObject();
     delete safeData.createdBy;
     delete safeData.__v;
@@ -59,7 +87,6 @@ app.get('/proposal/:proposalId', async (req, res) => {
   }
 });
 
-// Root test route
 app.get('/', (req, res) => {
   res.json({ 
     message: 'Air Utilities Quotation System API',
@@ -92,3 +119,5 @@ connectDB()
     console.error('Failed to start server:'.red.bold, err.message);
     process.exit(1);
   });
+
+module.exports = app;   // optional, for testing
