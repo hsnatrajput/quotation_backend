@@ -21,7 +21,6 @@ const submitAcceptance = asyncHandler(async (req, res) => {
     throw new Error('Missing required fields');
   }
 
-  // 1. Save acceptance
   const acceptance = await Acceptance.create({
     proposalId,
     quotationRef,
@@ -35,76 +34,45 @@ const submitAcceptance = asyncHandler(async (req, res) => {
     acceptedAt: new Date(),
   });
 
-  // 2. Fetch quotation data
   const Quotation = require('../models/Quotation');
   const quotation = await Quotation.findOne({ proposalId });
 
-  if (!quotation) {
-    console.warn(`Quotation ${proposalId} not found`);
-  }
-
   const transporter = req.app.get('emailTransporter');
 
-  // 3. Generate filled Word document
   let attachmentBuffer = null;
   try {
     if (quotation) {
       attachmentBuffer = await generateQuotationFromTemplate(quotation, {
         name,
+        signature,                    // ← Added signature
         positionHeld,
         contactNumbers,
         email,
         anticipatedStartDate,
         siteContact,
       });
-      console.log(`✅ Word template filled for proposal ${proposalId}`);
     }
   } catch (err) {
     console.error('❌ Template generation failed:'.red, err.message);
   }
 
-  // ────── Email to Customer ──────
   const clientMailOptions = {
     from: `"Air Utilities" <${process.env.FROM_EMAIL}>`,
     to: email,
     subject: `Thank You – Quotation Accepted (Ref: ${quotationRef || proposalId})`,
-    text: `Dear ${name},\n\nThank you for accepting our quotation.\nWe will contact you shortly.\n\nBest regards,\nAir Utilities Team`,
-    html: `
-      <div style="font-family: Arial, sans-serif; max-width: 650px; margin: 0 auto; padding: 30px; background: #f9f9f9; border-radius: 12px;">
-        <h2 style="color: #1e40af;">Thank You, ${name}!</h2>
-        <p>We have successfully received your acceptance for the quotation.</p>
-        <div style="background: white; padding: 20px; border-radius: 8px; margin: 25px 0;">
-          <p><strong>Proposal ID:</strong> ${proposalId}</p>
-          <p><strong>Reference:</strong> ${quotationRef || 'N/A'}</p>
-          <p><strong>Anticipated Start Date:</strong> ${anticipatedStartDate}</p>
-        </div>
-        <p>Our team will review the details and contact you soon.</p>
-        <p style="margin-top: 30px; color: #555;">
-          Best regards,<br>
-          <strong>Air Utilities Team</strong><br>
-          admin@airutilities.co.uk
-        </p>
-      </div>
-    `,
+    html: `<h2>Thank You, ${name}!</h2><p>Your acceptance has been received. Please find the filled quotation attached.</p>`,
     attachments: attachmentBuffer ? [{
-      filename: `Quotation_${proposalId}.docx`,        // You can change to .pdf later
+      filename: `Quotation_${proposalId}.docx`,
       content: attachmentBuffer,
       contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
     }] : []
   };
 
-  // ────── Email to Admin ──────
   const adminMailOptions = {
     from: `"Air Utilities System" <${process.env.FROM_EMAIL}>`,
     to: process.env.ADMIN_EMAIL,
-    subject: `New Quotation Acceptance – ${proposalId}`,
-    text: `New acceptance received:\nProposal: ${proposalId}\nName: ${name}\nEmail: ${email}`,
-    html: `
-      <h2>New Acceptance Received</h2>
-      <p><strong>Proposal ID:</strong> ${proposalId}</p>
-      <p><strong>Name:</strong> ${name}</p>
-      <p><strong>Email:</strong> ${email}</p>
-    `,
+    subject: `New Acceptance – ${proposalId}`,
+    html: `<h2>New Acceptance Received</h2><p>Proposal: ${proposalId}<br>Name: ${name}</p>`,
     attachments: attachmentBuffer ? [{
       filename: `Quotation_${proposalId}.docx`,
       content: attachmentBuffer,
@@ -117,9 +85,9 @@ const submitAcceptance = asyncHandler(async (req, res) => {
       transporter.sendMail(clientMailOptions),
       transporter.sendMail(adminMailOptions)
     ]);
-    console.log(`✅ Emails sent with filled quotation document for proposal ${proposalId}`);
+    console.log(`✅ Emails sent with filled quotation for ${proposalId}`);
   } catch (err) {
-    console.error('❌ Failed to send email:'.red, err.message);
+    console.error('❌ Email sending failed:'.red, err.message);
   }
 
   res.status(201).json({ 
